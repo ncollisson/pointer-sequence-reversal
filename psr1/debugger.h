@@ -16,6 +16,6 @@ public:
 private:
 	DWORD target_pid;
 	LPVOID target_address;
-	HANDLE target_handle;
+	HANDLE target_handle = NULL;
 };
 
