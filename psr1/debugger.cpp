@@ -7,7 +7,6 @@ Debugger::Debugger()
 {
 }
 
-
 Debugger::~Debugger()
 {
 }
@@ -98,6 +97,7 @@ int Debugger::WaitForMemoryBreakpoint()
 	DEBUG_EVENT debug_event;
 	LPDEBUG_EVENT lpdebug_event = &debug_event;
 	BOOL breakpoint_hit = FALSE;
+	LPVOID soft_breakpoint_address;
 
 	while (!breakpoint_hit)
 	{
@@ -117,7 +117,26 @@ int Debugger::WaitForMemoryBreakpoint()
 			{
 			case STATUS_GUARD_PAGE_VIOLATION:
 				HandleStatusGuardPageViolation(debug_event, breakpoint_hit);
-				break; 
+
+				if (breakpoint_hit) return 1;
+
+				// Set a the trap flag (single-step breakpoint)
+				// before telling program to continue, otherwise the program
+				// might execute past the instruction that accesses the desired
+				// memory address before the debugger can reset the memory breakpoint
+
+				SetTraceFlag(debug_event, TRUE);
+				break;
+
+			case STATUS_BREAKPOINT:
+				//HandleStatusBreakpoint();
+				std::cout << "STATUS_BREAKPOINT code reached" << std::endl;
+				break;
+
+			case EXCEPTION_SINGLE_STEP:
+				std::cout << "EXCEPTION_SINGLE_STEP code reached" << std::endl;
+				SetMemoryBreakpoint(target_address);
+				break;
 
 			default:
 				std::cout << "EXCEPTION_DEBUG_EVENT other than STATUS_GUARD_PAGE_VIOLATION" << std::endl;
@@ -130,22 +149,13 @@ int Debugger::WaitForMemoryBreakpoint()
 			break;
 		}
 
-		if (!breakpoint_hit)
-		{
-			// Set single-step breakpoint
-
-			ContinueDebugEvent(lpdebug_event->dwProcessId, lpdebug_event->dwThreadId, DBG_CONTINUE);
-			SetMemoryBreakpoint(target_address);
-		}
+		ContinueDebugEvent(lpdebug_event->dwProcessId, lpdebug_event->dwThreadId, DBG_CONTINUE);
 	}
-
-	return 1;
 }
 
 int Debugger::HandleStatusGuardPageViolation(const DEBUG_EVENT& debug_event, BOOL& breakpoint_hit)
 {
 	LPVOID access_address;
-	HANDLE thread_handle;
 	CONTEXT thread_context;
 	LPCONTEXT lpthread_context = &thread_context;
 	EXCEPTION_RECORD exception_record = debug_event.u.Exception.ExceptionRecord;
@@ -170,19 +180,98 @@ int Debugger::HandleStatusGuardPageViolation(const DEBUG_EVENT& debug_event, BOO
 		breakpoint_hit = TRUE;
 	}
 
+	return 1;
+}
+
+int Debugger::SetSoftBreakpoint(LPVOID target_address)
+{
+	char orig_instruction_byte;
+	LPVOID lporig_instruction_byte = &orig_instruction_byte;
+	char int3 = 0xCC;
+	LPCVOID lpcint3 = &int3;
+
+	if (!ReadProcessMemory(target_handle, target_address, lporig_instruction_byte, 1, NULL))
+	{
+		std::cout << "Error in ReadProcessMemory(): " << GetLastError() << std::endl;
+		return 0;
+	}
+
+	soft_breakpoint_list[target_address] = orig_instruction_byte;
+
+	if (!WriteProcessMemory(target_handle, target_address, lpcint3, 1, NULL))
+	{
+		std::cout << "Error in WriteProcessMemory(): " << GetLastError() << std::endl;
+		return 0;
+	}
+
+	return 1;
+}
+
+LPVOID Debugger::GetInstructionPointer(const DEBUG_EVENT& debug_event)
+{
+	HANDLE thread_handle;
+	CONTEXT thread_context;
+	LPCONTEXT lpthread_context = &thread_context;
+	LPVOID instruction_pointer;;
+
 	thread_handle = OpenThread(THREAD_ALL_ACCESS, FALSE, debug_event.dwThreadId);
 
 	if (!thread_handle)
 	{
 		std::cout << "Error in OpenThread(): " << GetLastError() << std::endl;
+		return 0;
 	}
+
+	thread_context.ContextFlags = CONTEXT_ALL;
 
 	if (!GetThreadContext(thread_handle, lpthread_context))
 	{
 		std::cout << "Error in GetThreadContext(): " << GetLastError() << std::endl;
+		return 0;
 	}
 
-	std::cout << std::hex << lpthread_context->Eip << std::endl;
+	// x86 specific
+	instruction_pointer = (LPVOID) lpthread_context->Eip;
+
+	return instruction_pointer;
+}
+
+int Debugger::SetTraceFlag(const DEBUG_EVENT& debug_event, BOOL set_TF_on)
+{
+	HANDLE thread_handle;
+	CONTEXT thread_context;
+	LPCONTEXT lpthread_context = &thread_context;
+
+	thread_handle = OpenThread(THREAD_ALL_ACCESS, FALSE, debug_event.dwThreadId);
+
+	if (!thread_handle)
+	{
+		std::cout << "Error in OpenThread(): " << GetLastError() << std::endl;
+		return 0;
+	}
+
+	thread_context.ContextFlags = CONTEXT_CONTROL;
+
+	if (!GetThreadContext(thread_handle, lpthread_context))
+	{
+		std::cout << "Error in GetThreadContext(): " << GetLastError() << std::endl;
+		return 0;
+	}
+
+	if (set_TF_on)
+	{
+		// x86 specific?
+		thread_context.EFlags |= 0x100;
+	}
+	else
+	{
+		thread_context.EFlags &= ~0x100;
+	}
+
+	if (!SetThreadContext(thread_handle, lpthread_context))
+	{
+		std::cout << "Error in SetThreadContext(): " << GetLastError() << std::endl;
+	}
 
 	return 1;
 }
