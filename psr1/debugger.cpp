@@ -98,9 +98,6 @@ int Debugger::WaitForMemoryBreakpoint()
 	DEBUG_EVENT debug_event;
 	LPDEBUG_EVENT lpdebug_event = &debug_event;
 	BOOL breakpoint_hit = FALSE;
-	LPVOID access_address;
-	CONTEXT thread_context;
-	LPCONTEXT lpthread_context = &thread_context;
 
 	while (!breakpoint_hit)
 	{
@@ -111,8 +108,6 @@ int Debugger::WaitForMemoryBreakpoint()
 		}
 
 		exception_record = lpdebug_event->u.Exception.ExceptionRecord;
-		unsigned int i, num = exception_record.NumberParameters;
-
 
 		switch (lpdebug_event->dwDebugEventCode)
 		{
@@ -121,35 +116,8 @@ int Debugger::WaitForMemoryBreakpoint()
 			switch (exception_record.ExceptionCode)
 			{
 			case STATUS_GUARD_PAGE_VIOLATION:
-				std::cout << "STATUS_GUARD_PAGE_VIOLATION: Page guard hit" << std::endl;
-
-				for (i = 0; i < num; i++)
-				{
-					std::cout << "ExceptionInformation[" << i << "]: " << std::hex << exception_record.ExceptionInformation[i] << std::endl;
-				}
-
-				// ExceptionInformation structure undefined for STATUS_GUARD_PAGE_VIOLATION
-				// Consider using PAGE_NOACCESS instead of PAGE_GUARD since
-				// ExceptionInformation for EXCEPTION_ACCESS_VIOLATION is defined.
-
-				access_address = (num > 0 ? (LPVOID) exception_record.ExceptionInformation[num - 1] : NULL);
-
-				if (access_address == target_address)
-				{
-					std::cout << "Memory breakpoint hit" << std::endl;
-					breakpoint_hit = TRUE;
-				}
-				else
-				{
-					SetMemoryBreakpoint(target_address);
-				}
-
-				if (!GetThreadContext(target_handle, lpthread_context))
-				{
-					std::cout << "Error in GetThreadContext(): " << GetLastError() << std::endl;
-				}
-
-				break;
+				HandleStatusGuardPageViolation(debug_event, breakpoint_hit);
+				break; 
 
 			default:
 				std::cout << "EXCEPTION_DEBUG_EVENT other than STATUS_GUARD_PAGE_VIOLATION" << std::endl;
@@ -164,9 +132,57 @@ int Debugger::WaitForMemoryBreakpoint()
 
 		if (!breakpoint_hit)
 		{
+			// Set single-step breakpoint
+
 			ContinueDebugEvent(lpdebug_event->dwProcessId, lpdebug_event->dwThreadId, DBG_CONTINUE);
+			SetMemoryBreakpoint(target_address);
 		}
 	}
+
+	return 1;
+}
+
+int Debugger::HandleStatusGuardPageViolation(const DEBUG_EVENT& debug_event, BOOL& breakpoint_hit)
+{
+	LPVOID access_address;
+	HANDLE thread_handle;
+	CONTEXT thread_context;
+	LPCONTEXT lpthread_context = &thread_context;
+	EXCEPTION_RECORD exception_record = debug_event.u.Exception.ExceptionRecord;
+	unsigned int i, num = exception_record.NumberParameters;
+
+	std::cout << "STATUS_GUARD_PAGE_VIOLATION: Page guard hit" << std::endl;
+
+	for (i = 0; i < num; i++)
+	{
+		std::cout << "ExceptionInformation[" << i << "]: " << std::hex << exception_record.ExceptionInformation[i] << std::endl;
+	}
+
+	// ExceptionInformation structure undefined for STATUS_GUARD_PAGE_VIOLATION
+	// Consider using PAGE_NOACCESS instead of PAGE_GUARD since
+	// ExceptionInformation for EXCEPTION_ACCESS_VIOLATION is defined.
+
+	access_address = (num > 0 ? (LPVOID)exception_record.ExceptionInformation[num - 1] : NULL);
+
+	if (access_address == target_address)
+	{
+		std::cout << "[+] Memory breakpoint hit" << std::endl;
+		breakpoint_hit = TRUE;
+	}
+
+	thread_handle = OpenThread(THREAD_ALL_ACCESS, FALSE, debug_event.dwThreadId);
+
+	if (!thread_handle)
+	{
+		std::cout << "Error in OpenThread(): " << GetLastError() << std::endl;
+	}
+
+	if (!GetThreadContext(thread_handle, lpthread_context))
+	{
+		std::cout << "Error in GetThreadContext(): " << GetLastError() << std::endl;
+	}
+
+	std::cout << std::hex << lpthread_context->Eip << std::endl;
 
 	return 1;
 }

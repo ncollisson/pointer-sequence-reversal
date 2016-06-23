@@ -17,5 +17,7 @@ private:
 	DWORD target_pid;
 	LPVOID target_address;
 	HANDLE target_handle = NULL;
+
+	int HandleStatusGuardPageViolation(const DEBUG_EVENT& debug_event, BOOL& breakpoint_hit);
 };
 
