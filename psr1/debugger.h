@@ -22,9 +22,8 @@ private:
 	std::map<LPVOID, char> soft_breakpoint_list;
 
 	int HandleStatusGuardPageViolation(const DEBUG_EVENT& debug_event, BOOL& breakpoint_hit);
-	int HandleStatusBreakpoint();
 
 	LPVOID GetInstructionPointer(const DEBUG_EVENT& debug_event);
-	int Debugger::SetTraceFlag(const DEBUG_EVENT& debug_event, BOOL set_TF_on);
+	int Debugger::SetTrapFlag(const DEBUG_EVENT& debug_event);
 };
 

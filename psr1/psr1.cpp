@@ -25,7 +25,10 @@ int main()
 	while (TRUE)
 	{
 		debugger->SetMemoryBreakpoint(target_address);
-		debugger->WaitForMemoryBreakpoint();
+		if (!debugger->WaitForMemoryBreakpoint())
+		{
+			std::cout << "Error in WaitForMemoryBreakpoint()" << std::endl;
+		}
 	}
 	//debugger->AnalyzeRunTrace();
 

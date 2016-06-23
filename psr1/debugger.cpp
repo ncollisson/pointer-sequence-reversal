@@ -97,9 +97,8 @@ int Debugger::WaitForMemoryBreakpoint()
 	DEBUG_EVENT debug_event;
 	LPDEBUG_EVENT lpdebug_event = &debug_event;
 	BOOL breakpoint_hit = FALSE;
-	LPVOID soft_breakpoint_address;
 
-	while (!breakpoint_hit)
+	while (TRUE)
 	{
 		if (!WaitForDebugEvent(lpdebug_event, INFINITE))
 		{
@@ -116,21 +115,17 @@ int Debugger::WaitForMemoryBreakpoint()
 			switch (exception_record.ExceptionCode)
 			{
 			case STATUS_GUARD_PAGE_VIOLATION:
+				// rename this to BreakpointHit(debug_event)
 				HandleStatusGuardPageViolation(debug_event, breakpoint_hit);
 
 				if (breakpoint_hit) return 1;
 
-				// Set a the trap flag (single-step breakpoint)
+				// The trap flag (single-step breakpoint) must be set
 				// before telling program to continue, otherwise the program
 				// might execute past the instruction that accesses the desired
 				// memory address before the debugger can reset the memory breakpoint
 
-				SetTraceFlag(debug_event, TRUE);
-				break;
-
-			case STATUS_BREAKPOINT:
-				//HandleStatusBreakpoint();
-				std::cout << "STATUS_BREAKPOINT code reached" << std::endl;
+				SetTrapFlag(debug_event);
 				break;
 
 			case EXCEPTION_SINGLE_STEP:
@@ -172,11 +167,11 @@ int Debugger::HandleStatusGuardPageViolation(const DEBUG_EVENT& debug_event, BOO
 	// Consider using PAGE_NOACCESS instead of PAGE_GUARD since
 	// ExceptionInformation for EXCEPTION_ACCESS_VIOLATION is defined.
 
-	access_address = (num > 0 ? (LPVOID)exception_record.ExceptionInformation[num - 1] : NULL);
+	access_address = (num > 0 ? (LPVOID) exception_record.ExceptionInformation[num - 1] : NULL);
 
 	if (access_address == target_address)
 	{
-		std::cout << "[+] Memory breakpoint hit" << std::endl;
+		std::cout << "Memory breakpoint hit" << std::endl;
 		breakpoint_hit = TRUE;
 	}
 
@@ -187,7 +182,7 @@ int Debugger::SetSoftBreakpoint(LPVOID target_address)
 {
 	char orig_instruction_byte;
 	LPVOID lporig_instruction_byte = &orig_instruction_byte;
-	char int3 = 0xCC;
+	char int3 = '\xCC';
 	LPCVOID lpcint3 = &int3;
 
 	if (!ReadProcessMemory(target_handle, target_address, lporig_instruction_byte, 1, NULL))
@@ -236,7 +231,7 @@ LPVOID Debugger::GetInstructionPointer(const DEBUG_EVENT& debug_event)
 	return instruction_pointer;
 }
 
-int Debugger::SetTraceFlag(const DEBUG_EVENT& debug_event, BOOL set_TF_on)
+int Debugger::SetTrapFlag(const DEBUG_EVENT& debug_event)
 {
 	HANDLE thread_handle;
 	CONTEXT thread_context;
@@ -258,15 +253,8 @@ int Debugger::SetTraceFlag(const DEBUG_EVENT& debug_event, BOOL set_TF_on)
 		return 0;
 	}
 
-	if (set_TF_on)
-	{
-		// x86 specific?
-		thread_context.EFlags |= 0x100;
-	}
-	else
-	{
-		thread_context.EFlags &= ~0x100;
-	}
+	// x86 specific?
+	thread_context.EFlags |= 0x100;
 
 	if (!SetThreadContext(thread_handle, lpthread_context))
 	{
