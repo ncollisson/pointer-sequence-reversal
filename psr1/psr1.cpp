@@ -21,16 +21,36 @@ int main()
 	debugger->SetTargetAddress(target_address);
 
 	debugger->Attach();
-	//debugger->StartRunTraceRecording();
-	while (TRUE)
-	{
+	
+	// get each thread debug message
+		// make a new record trace object for each thread
+		// set trap flag on each thread
+
+	// then set memory breakpoint
+
+	// then wait for it to be hit
+		// then pull run trace for that thread
+
+	//while (TRUE)
+	//{
+		/* 
+		lets try dumber approach of setting mem bp and recording
+		just do a sanity check that the last instruction recorded actually
+		hits the mem bp
+
+
+		*/
+		debugger->StartRecordingRegisterModifications();
 		debugger->SetMemoryBreakpoint(target_address);
+		std::cout << "waiting for memory access..." << std::endl;
 		if (!debugger->WaitForMemoryBreakpoint())
 		{
 			std::cout << "Error in WaitForMemoryBreakpoint()" << std::endl;
 		}
-	}
-	//debugger->AnalyzeRunTrace();
+
+		//debugger->PrintRegisterChanges();
+		//debugger->AnalyzeRunTrace();
+	//}
 
     return 0;
 }
