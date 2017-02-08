@@ -1,10 +1,12 @@
 #include "stdafx.h"
-#include "Tracer.h"
 #include <Windows.h>
 #include <map>
 #include <vector>
 #include <string>
 #include <iostream>
+#include <tuple>
+#include "Tracer.h"
+
 
 Tracer::Tracer()
 	: cs_handle(NULL) // how to do this right? should we initialize handle to null or an actual handle value here?
@@ -104,7 +106,7 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 		const char *reg_name = cs_reg_name(cs_handle, regs_read[0]);
 		bool error;
 
-		GetValueOfRegisterForInstruction(reg_name, insn, error);
+		GetValueOfRegisterForInstruction(thread_id, reg_name, insn, error);
 	}
 
 
@@ -175,7 +177,13 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	return 1;
 }
 
-DWORD Tracer::GetValueOfRegisterForInstruction(const char *, cs_insn, bool error)
+DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, const char *reg_name, cs_insn insn, bool error)
 {
-	
+	uint64_t address_of_instruction = insn.address;
+	auto run_trace = all_threads_saved_instructions[thread_id];
+
+	for (auto ins = run_trace.rbegin(); ins != run_trace.rend(); ++ins)
+	{
+		std::get<2>(*ins);
+	}
 }
