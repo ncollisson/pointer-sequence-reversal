@@ -177,7 +177,8 @@ int Debugger::WaitForMemoryBreakpoint()
 					// do we need to do the first or second insn from buffer?
 					// if first, just get rid of 2x max size
 					cs_insn offending_instruction = insn[1];
-					Tracer->AnalyzeInstructions(offending_instruction);
+					Tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
+					Tracer->AnalyzeRunTrace(offending_thread_ID, exception_record);
 
 					/*
 					// maybe move cs_handle to class data member?
