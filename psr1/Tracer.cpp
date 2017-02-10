@@ -103,12 +103,33 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 			return 0;
 		}
 
-		const char *reg_name = cs_reg_name(cs_handle, regs_read[0]);
-		bool error;
+		const char *reg_name;
+		bool found = false, analysis_succeeded = false;
+		DWORD value;
+		uint64_t last_insn_address = 0;
 
-		GetValueOfRegisterForInstruction(thread_id, reg_name, insn, error);
+		while (!analysis_succeeded)
+		{
+			reg_name = cs_reg_name(cs_handle, regs_read[0]);
+
+			value = GetValueOfRegisterForInstruction(thread_id, reg_name, insn, found);
+			if (!found) break;
+
+			if (IsStaticAddress(value))
+			{
+				analysis_succeeded = true;
+				break;
+			}
+
+			insn = FindEarliestOccurenceOfValueInTrace(value); // returns some instruction 
+			if (insn.address == last_insn_address) break;
+			last_insn_address = insn.address;
+
+			cs_regs_access(cs_handle, &insn, regs_read, &read_count, regs_write, &write_count);
+		}
+		// get register read from
+		// get value of register for instruction
 	}
-
 
 	// get value of the register x (might have to go back through the trace to find when it was last modified)
 	
@@ -177,13 +198,31 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	return 1;
 }
 
-DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, const char *reg_name, cs_insn insn, bool error)
+DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, const char *reg_name, cs_insn insn, bool found)
 {
 	uint64_t address_of_instruction = insn.address;
 	auto run_trace = all_threads_saved_instructions[thread_id];
+	std::map<std::string, DWORD> modifications;
 
-	for (auto ins = run_trace.rbegin(); ins != run_trace.rend(); ++ins)
+	for (auto ins = run_trace.rbegin(); ins != run_trace.rend(); ins++)
 	{
-		std::get<2>(*ins);
+		modifications = std::get<2>(*ins);
+
+		auto modification = modifications.find(reg_name);
+
+		if (modification != modifications.end())
+		{
+			found = true;
+			return modification->second;
+		}
 	}
+
+	found = false;
+	return 0;
+}
+
+cs_insn Tracer::FindEarliestOccurenceOfValueInTrace(DWORD value)
+{
+	cs_insn insn;
+	return insn;
 }
