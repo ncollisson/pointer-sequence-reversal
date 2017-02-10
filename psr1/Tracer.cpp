@@ -95,16 +95,30 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	// exceptioninformation[0] == 0 when memory read violation
 	if (read_count > 0 && exception_record.ExceptionInformation[0] == 0)
 	{
+		const char *reg_name, *temp_reg_name;
+		bool found = false, analysis_succeeded = false;
+
 		if (read_count > 1)
 		{
-			// for now only attempt tracing back from instructions where one register is read from
-			// figure out what to do about instructions like "mov eax, [ecx + edx * 4]" later
+			// figure out what to do about instructions like "mov eax, [ecx + edx * 4]"
 			// probably want to guess that register with higher value contains useful address
-			return 0;
+			DWORD this_value = 0, last_value = 0;
+
+			for (int i = 0; i < read_count; i++)
+			{
+				temp_reg_name = cs_reg_name(cs_handle, regs_read[i]);
+				this_value = GetValueOfRegisterForInstruction(thread_id, reg_name, insn, found);
+
+				if (this_value > last_value)
+				{
+					reg_name = temp_reg_name;
+					last_value = this_value;
+				}
+			}
+			
+		
 		}
 
-		const char *reg_name;
-		bool found = false, analysis_succeeded = false;
 		DWORD value;
 		uint64_t last_insn_address = 0;
 
