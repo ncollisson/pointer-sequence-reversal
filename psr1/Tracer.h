@@ -15,8 +15,10 @@ public:
 
 private:
 	int InitializeCapstone(); // maybe just put this in constructor? also set options for details
-	DWORD GetValueOfRegisterForInstruction(DWORD thread_id, const char *reg_name, cs_insn insn, bool found);
+	DWORD GetValueOfRegisterForInstruction(DWORD thread_id, std::string reg_name, cs_insn insn, bool found);
 	cs_insn FindEarliestOccurenceOfValueInTrace(DWORD value);
+	std::string GetRegisterReadFrom(DWORD thread_id, cs_insn insn);
+	bool IsStaticAddress(DWORD value);
 
 	std::map<DWORD, std::vector<std::tuple<DWORD, cs_insn, std::map<std::string, DWORD>>>> all_threads_saved_instructions;
 	std::map<DWORD, CONTEXT> all_threads_saved_contexts;

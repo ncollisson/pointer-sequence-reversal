@@ -82,68 +82,67 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	// probably want to make this more like analyze saved instructions
 	// takes no args, just looks at current trace for thread, oh maybe i need to know which thread to do
 
-	cs_regs regs_read, regs_write;
-	uint8_t read_count, write_count;
-	std::string register_read_name;
+	std::string reg_name;
+	bool analysis_succeeded = false, found = false;
 
 	cs_insn insn = std::get<1>(all_threads_saved_instructions[thread_id].back());
 
-	// look at last instruction
-	// identify register x used to access address
-	cs_regs_access(cs_handle, &insn, regs_read, &read_count, regs_write, &write_count);
-
-	// exceptioninformation[0] == 0 when memory read violation
-	if (read_count > 0 && exception_record.ExceptionInformation[0] == 0)
+	if (exception_record.ExceptionInformation[0] == 0) // true when the memory access violation was a read
 	{
-		const char *reg_name, *temp_reg_name;
-		bool found = false, analysis_succeeded = false;
-
-		if (read_count > 1)
-		{
-			// figure out what to do about instructions like "mov eax, [ecx + edx * 4]"
-			// probably want to guess that register with higher value contains useful address
-			DWORD this_value = 0, last_value = 0;
-
-			for (int i = 0; i < read_count; i++)
-			{
-				temp_reg_name = cs_reg_name(cs_handle, regs_read[i]);
-				this_value = GetValueOfRegisterForInstruction(thread_id, reg_name, insn, found);
-
-				if (this_value > last_value)
-				{
-					reg_name = temp_reg_name;
-					last_value = this_value;
-				}
-			}
-			
-		
-		}
-
-		DWORD value;
-		uint64_t last_insn_address = 0;
-
-		while (!analysis_succeeded)
-		{
-			reg_name = cs_reg_name(cs_handle, regs_read[0]);
-
-			value = GetValueOfRegisterForInstruction(thread_id, reg_name, insn, found);
-			if (!found) break;
-
-			if (IsStaticAddress(value))
-			{
-				analysis_succeeded = true;
-				break;
-			}
-
-			insn = FindEarliestOccurenceOfValueInTrace(value); // returns some instruction 
-			if (insn.address == last_insn_address) break;
-			last_insn_address = insn.address;
-
-			cs_regs_access(cs_handle, &insn, regs_read, &read_count, regs_write, &write_count);
-		}
-		// get register read from
-		// get value of register for instruction
+		reg_name = GetRegisterReadFrom(thread_id, insn);
 	}
+	else
+	{
+		// dont think capstone can identify regs written to very well
+		// dont even try for now
+		return 0;
+	}
+
+	DWORD value;
+	uint64_t last_insn_address = 0;
+	std::vector<cs_insn> relevant_instructions;
+
+	while (!analysis_succeeded)
+	{
+		value = GetValueOfRegisterForInstruction(thread_id, reg_name, insn, found);
+		if (!found) break;
+		found = false;
+
+		if (IsStaticAddress(value)) // or whatever other condition means success
+		{
+			analysis_succeeded = true;
+			break;
+		}
+
+		insn = FindEarliestOccurenceOfValueInTrace(value); // returns some instruction 
+		if (insn.address == last_insn_address) break;
+		last_insn_address = insn.address;
+
+		relevant_instructions.push_back(insn);
+
+		reg_name = GetRegisterReadFrom(thread_id, insn);
+		if (reg_name == "no registers read") break;
+	}
+
+	if (analysis_succeeded)
+	{
+		std::cout << "successful trace completed" << std::endl;
+
+		for (auto ins = relevant_instructions.rbegin(); ins != relevant_instructions.rend(); ins++)
+		{
+			auto rel_insn = *ins;
+			std::cout << rel_insn.address << "\t" << rel_insn.mnemonic << " " << rel_insn.op_str << std::endl;
+		}
+
+		std::cout << "-------- end of trace --------" << std::endl;
+	}
+	else
+	{
+		std::cout << "trace completed but did not succeed" << std::endl;
+	}
+
+		
+	// now what to do with analysis? should be saving info along the way
 
 	// get value of the register x (might have to go back through the trace to find when it was last modified)
 	
@@ -153,7 +152,6 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 
 	// repeat process with register y until static memory address is found
 	
-
 	/*
 	for (size_t i = 0; i < 1; i++)
 	{
@@ -212,7 +210,45 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	return 1;
 }
 
-DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, const char *reg_name, cs_insn insn, bool found)
+bool Tracer::IsStaticAddress(DWORD value)
+{
+	return false;
+}
+
+std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn)
+{
+	std::string reg_name = "no registers read", temp_reg_name;
+	cs_regs regs_read, regs_write;
+	uint8_t read_count, write_count;
+
+	cs_regs_access(cs_handle, &insn, regs_read, &read_count, regs_write, &write_count);
+
+	// exceptioninformation[0] == 0 when memory read violation
+	if (read_count > 0)
+	{
+		bool found = false;
+
+		// figure out what to do about instructions like "mov eax, [ecx + edx * 4]"
+		// probably want to guess that register with higher value contains useful address
+		DWORD this_value = 0, last_value = 0;
+
+		for (int i = 0; i < read_count; i++)
+		{
+			temp_reg_name = cs_reg_name(cs_handle, regs_read[i]);
+			this_value = GetValueOfRegisterForInstruction(thread_id, reg_name.c_str(), insn, found);
+
+			if (this_value >= last_value)
+			{
+				reg_name = temp_reg_name;
+				last_value = this_value;
+			}
+		}
+	}
+
+	return reg_name;
+}
+
+DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, std::string reg_name, cs_insn insn, bool found)
 {
 	uint64_t address_of_instruction = insn.address;
 	auto run_trace = all_threads_saved_instructions[thread_id];
@@ -222,7 +258,7 @@ DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, const char *reg_
 	{
 		modifications = std::get<2>(*ins);
 
-		auto modification = modifications.find(reg_name);
+		auto modification = modifications.find(reg_name.c_str());
 
 		if (modification != modifications.end())
 		{

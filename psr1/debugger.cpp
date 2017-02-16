@@ -536,6 +536,7 @@ int Debugger::GetCurrentThreadContext(DWORD thread_id, CONTEXT &thread_context)
 	return 1;
 }
 
+/*
 int Debugger::SaveRegisterChanges(DWORD thread_id, const CONTEXT &thread_context)
 {
 	std::map<std::string, DWORD> modifications;
@@ -561,7 +562,9 @@ int Debugger::SaveRegisterChanges(DWORD thread_id, const CONTEXT &thread_context
 
 	return 1;
 }
+*/
 
+/*
 int Debugger::PrintRegisterChanges(DWORD thread_id)
 {
 	DWORD Eip_value;
@@ -585,6 +588,7 @@ int Debugger::PrintRegisterChanges(DWORD thread_id)
 	}
 	return 1;
 }
+*/
 
 int Debugger::PrintRunTrace(DWORD thread_id)
 {
