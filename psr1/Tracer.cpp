@@ -18,6 +18,8 @@ int Tracer::InitializeCapstone()
 {
 	if (cs_open(CS_ARCH_X86, CS_MODE_32, &cs_handle) != CS_ERR_OK) std::cout << "Error in cs_open()" << std::endl;
 	cs_option(cs_handle, CS_OPT_DETAIL, CS_OPT_ON);
+
+	return 1;
 }
 
 

@@ -303,6 +303,7 @@ z
 	}
 }
 
+/*
 int Debugger::AnalyzeRunTrace(DWORD thread_id, CONTEXT thread_context, uint16_t register_ID, uint8_t read_count)
 {
 	// get register read from
@@ -328,6 +329,7 @@ int Debugger::AnalyzeRunTrace(DWORD thread_id, CONTEXT thread_context, uint16_t 
 		//value = thread_context.
 	}
 }
+*/
 
 /*
 int Debugger::SaveInstructionInfo(DWORD thread_id, const CONTEXT& thread_context)
@@ -589,7 +591,7 @@ int Debugger::PrintRegisterChanges(DWORD thread_id)
 	return 1;
 }
 */
-
+/*
 int Debugger::PrintRunTrace(DWORD thread_id)
 {
 	DWORD Eip_value;
@@ -614,6 +616,7 @@ int Debugger::PrintRunTrace(DWORD thread_id)
 
 	return 1;
 }
+*/
 
 // taken from msdn
 BOOL Debugger::ListProcessThreads(DWORD dwOwnerPID)

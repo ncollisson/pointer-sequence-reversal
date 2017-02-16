@@ -3,6 +3,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <memory>
 #include "capstone.h"
 #include "Tracer.h"
 
@@ -54,7 +55,7 @@ private:
 	LPVOID GetInstructionPointer(const DEBUG_EVENT& debug_event);
 	int SetTrapFlag(DWORD thread_id);
 	int GetCurrentThreadContext(DWORD thread_id, CONTEXT &thread_context);
-	int SaveRegisterChanges(DWORD thread_id, const CONTEXT &thread_context);
+	//int SaveRegisterChanges(DWORD thread_id, const CONTEXT &thread_context);
 	BOOL ListProcessThreads(DWORD dwOwnerPID);
 	//int SaveInstructionInfo(DWORD thread_id, const CONTEXT& thread_context);
 	int PrintRunTrace(DWORD thread_id);
