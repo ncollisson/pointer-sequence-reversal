@@ -114,7 +114,7 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 			break;
 		}
 
-		insn = FindEarliestOccurenceOfValueInTrace(value); // returns some instruction 
+		insn = FindEarliestOccurenceOfValueInTrace(thread_id, value); // returns some instruction 
 		if (insn.address == last_insn_address) break;
 		last_insn_address = insn.address;
 
@@ -212,6 +212,8 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 
 bool Tracer::IsStaticAddress(DWORD value)
 {
+	if (value >= 0x400000 && value <= 0xA3D000) return true;
+
 	return false;
 }
 
@@ -271,8 +273,27 @@ DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, std::string reg_
 	return 0;
 }
 
-cs_insn Tracer::FindEarliestOccurenceOfValueInTrace(DWORD value)
+cs_insn Tracer::FindEarliestOccurenceOfValueInTrace(DWORD thread_id, DWORD value)
 {
+	auto run_trace = all_threads_saved_instructions[thread_id];
 	cs_insn insn;
-	return insn;
+	std::map<std::string, DWORD> modifications;
+
+	for (auto ins = run_trace.begin(); ins != run_trace.end(); ins++)
+	{
+		// think im going to have to align modifications with instructions properly?
+		// or maybe just grab the previous instruction here or something
+
+		modifications = std::get<2>(*ins);
+
+		for (auto mod = modifications.begin(); mod != modifications.end(); mod++)
+		{ 
+			if (mod->second == value)
+			{
+				insn = std::get<1>(*ins);
+
+				return insn;
+			}
+		}
+	}
 }
