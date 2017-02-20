@@ -18,10 +18,11 @@ public:
 	int SetTargetAddress(LPVOID target_address);
 	int Attach();
 	int SetMemoryBreakpoint(LPVOID target_address);
+	int RemoveMemoryBreakpoint();
 	int WaitForMemoryBreakpoint();
 	int SetSoftBreakpoint(LPVOID target_address);
 	int StartRecordingRegisterModifications();
-	int PrintRegisterChanges(DWORD thread_id);
+	//int PrintRegisterChanges(DWORD thread_id);
 
 private:
 	DWORD target_pid;
@@ -48,6 +49,7 @@ private:
 
 	size_t MAX_TRACE_LENGTH = 50;
 	size_t max_insn_size = 15;
+	DWORD orig_protect;
 
 	//std::map<unsigned int, std::vector<cs_insn>> 
 
@@ -58,10 +60,10 @@ private:
 	//int SaveRegisterChanges(DWORD thread_id, const CONTEXT &thread_context);
 	BOOL ListProcessThreads(DWORD dwOwnerPID);
 	//int SaveInstructionInfo(DWORD thread_id, const CONTEXT& thread_context);
-	int PrintRunTrace(DWORD thread_id);
-	int AnalyzeRunTrace(DWORD offending_thread_ID, CONTEXT thread_context, uint16_t register_ID, uint8_t read_count);
+	//int PrintRunTrace(DWORD thread_id);
+	//int AnalyzeRunTrace(DWORD offending_thread_ID, CONTEXT thread_context, uint16_t register_ID, uint8_t read_count);
 	//int PrintAnalysis(DWORD offending_thread_ID, unsigned int analysis_ID);
 
-	std::unique_ptr<Tracer> Tracer;
+	std::unique_ptr<Tracer> tracer;
 };
 

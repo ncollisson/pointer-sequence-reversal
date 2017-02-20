@@ -8,6 +8,7 @@ public:
 	Tracer();
 	~Tracer();
 
+	int SaveInstruction(uint8_t* instruction_buffer, DWORD thread_id, const CONTEXT& thread_context)
 	int SaveInstructionInfo(uint8_t* instruction_buffer, size_t max_insn_size, DWORD thread_id, const CONTEXT& thread_context);
 	int AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record);
 
@@ -23,7 +24,7 @@ private:
 	std::map<DWORD, std::vector<std::tuple<DWORD, cs_insn, std::map<std::string, DWORD>>>> all_threads_saved_instructions;
 	std::map<DWORD, CONTEXT> all_threads_saved_contexts;
 	//const size_t x86_MAX_INSTRUCTION_LENGTH = 15;
-	const size_t max_trace_length = 1000;
+	const size_t max_trace_length = 500;
 
 };
 

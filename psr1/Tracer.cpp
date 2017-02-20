@@ -75,6 +75,13 @@ int Tracer::SaveInstructionInfo(uint8_t* instruction_buffer, size_t max_insn_siz
 	return 1;
 }
 
+int Tracer::SaveInstruction(uint8_t* instruction_buffer, DWORD thread_id, const CONTEXT& thread_context)
+{
+
+
+	return 1;
+}
+
 int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 {
 	// first, print whole trace
@@ -123,7 +130,7 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 		relevant_instructions.push_back(insn);
 
 		reg_name = GetRegisterReadFrom(thread_id, insn);
-		if (reg_name == "no registers read") break;
+		if (reg_name == "No registers read") break;
 	}
 
 	if (analysis_succeeded)
@@ -221,13 +228,15 @@ bool Tracer::IsStaticAddress(DWORD value)
 
 std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn)
 {
-	std::string reg_name = "no registers read", temp_reg_name;
+	std::string reg_name = "No registers read", temp_reg_name, op_str = insn.op_str;
 	cs_regs regs_read, regs_write;
 	uint8_t read_count, write_count;
+	unsigned int reg_count = 0;
 
+	std::vector<std::string> my_regs_read;
+	
 	cs_regs_access(cs_handle, &insn, regs_read, &read_count, regs_write, &write_count);
 
-	// exceptioninformation[0] == 0 when memory read violation
 	if (read_count > 0)
 	{
 		bool found = false;
@@ -239,6 +248,8 @@ std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn)
 		for (int i = 0; i < read_count; i++)
 		{
 			temp_reg_name = cs_reg_name(cs_handle, regs_read[i]);
+			temp_reg_name[0] = toupper(temp_reg_name[0]);
+
 			this_value = GetValueOfRegisterForInstruction(thread_id, reg_name.c_str(), insn, found);
 
 			if (this_value >= last_value)
@@ -248,6 +259,8 @@ std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn)
 			}
 		}
 	}
+
+	reg_name[0] = toupper(reg_name[0]);
 
 	return reg_name;
 }

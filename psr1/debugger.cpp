@@ -6,10 +6,11 @@
 #include "capstone.h"
 //#include <stdio.h>
 #include <inttypes.h>
-#include "CsCapstoneHelper.hh"
-#include "Disasm.hpp"
-#include "CsIns.hpp"
-#include "X86Disasm.hh"
+//#include "CsCapstoneHelper.hh"
+//#include "Disasm.hpp"
+//#include "CsIns.hpp"
+//#include "X86Disasm.hh"
+#include "Tracer.h"
 int (WINAPIV * __vsnprintf)(char *, size_t, const char*, va_list) = _vsnprintf;
 
 
@@ -50,6 +51,8 @@ int Debugger::Attach()
 		std::cout << "Could not DebugSetProcessKillOnExit(FALSE)" << std::endl;
 	}
 
+	tracer = std::make_unique<Tracer>();
+
 	std::cout << "Now debugging the target process" << std::endl;
 
 	return 1;
@@ -57,7 +60,7 @@ int Debugger::Attach()
 
 int Debugger::SetMemoryBreakpoint(LPVOID target_address = NULL)
 {
-	DWORD old_protect, orig_protect;
+	DWORD old_protect;
 	MEMORY_BASIC_INFORMATION page_info;
 	PMEMORY_BASIC_INFORMATION ppage_info = &page_info;
 	size_t breakpoint_size = 1;
@@ -105,6 +108,22 @@ int Debugger::SetMemoryBreakpoint(LPVOID target_address = NULL)
 	return 1;
 }
 
+int Debugger::RemoveMemoryBreakpoint()
+{
+	DWORD old_protect;
+	MEMORY_BASIC_INFORMATION page_info;
+	PMEMORY_BASIC_INFORMATION ppage_info = &page_info;
+	size_t breakpoint_size = 1;
+
+	if (!VirtualProtectEx(target_handle, target_address, breakpoint_size, orig_protect, &old_protect))
+	{
+		std::cout << "Error in VirtualProtectEx(): " << GetLastError() << std::endl;
+		return 0;
+	}
+
+	return 1;
+}
+
 int Debugger::WaitForMemoryBreakpoint()
 {
 	EXCEPTION_RECORD exception_record;
@@ -124,7 +143,7 @@ int Debugger::WaitForMemoryBreakpoint()
 	// maybe up here set trap flag
 
 	// 0x51 == Q key
-	while (TRUE)
+	while (!GetAsyncKeyState(0x51))
 	{
 		if (!WaitForDebugEvent(lpdebug_event, INFINITE))
 		{
@@ -172,13 +191,13 @@ int Debugger::WaitForMemoryBreakpoint()
 					// probably doesnt matter too much this doesnt happen very often
 					ReadProcessMemory(target_handle, LPCVOID (thread_context.Eip), instruction_buffer, sizeof(instruction_buffer), &num_bytes_read);
 
-					cs_count = cs_disasm(Tracer->cs_handle, instruction_buffer, sizeof(instruction_buffer), thread_context.Eip, 0, &insn);
+					cs_count = cs_disasm(tracer->cs_handle, instruction_buffer, sizeof(instruction_buffer), thread_context.Eip, 0, &insn);
 
 					// do we need to do the first or second insn from buffer?
 					// if first, just get rid of 2x max size
 					cs_insn offending_instruction = insn[1];
-					Tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
-					Tracer->AnalyzeRunTrace(offending_thread_ID, exception_record);
+					tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
+					tracer->AnalyzeRunTrace(offending_thread_ID, exception_record);
 
 					/*
 					// maybe move cs_handle to class data member?
@@ -264,14 +283,15 @@ z
 
 			case EXCEPTION_SINGLE_STEP:
 
+				GetCurrentThreadContext(offending_thread_ID, thread_context);
+
 				if (!ReadProcessMemory(target_handle, LPCVOID(thread_context.Eip), instruction_buffer, sizeof(instruction_buffer), &num_bytes_read))
 				{
 					std::cout << "Error in ReadProcessMemory(): " << GetLastError() << std::endl;
 					return 0;
 				}
 
-				GetCurrentThreadContext(offending_thread_ID, thread_context);
-				Tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
+				tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
 
 				SetTrapFlag(offending_thread_ID);
 				
@@ -286,10 +306,12 @@ z
 
 		case CREATE_THREAD_DEBUG_EVENT:
 			//std::cout << "create thread debug event" << std::endl;
+			/*
 			new_thread_handle = lpdebug_event->u.CreateProcessInfo.hThread;
-			new_thread_id = GetThreadId(new_thread_handle);
+			new_thread_id = GetThreadId(new_thread_handle); // GetThreadId is fucking up, get error code, find out why
 			thread_handles.insert_or_assign(new_thread_id, new_thread_handle);
 			SetTrapFlag(new_thread_id);
+			*/
 
 			break;
 
@@ -301,6 +323,16 @@ z
 
 		ContinueDebugEvent(lpdebug_event->dwProcessId, lpdebug_event->dwThreadId, DBG_CONTINUE);
 	}
+
+	RemoveMemoryBreakpoint();
+
+	while (TRUE)
+	{
+		if (!WaitForDebugEvent(lpdebug_event, 2000)) break;
+		ContinueDebugEvent(lpdebug_event->dwProcessId, lpdebug_event->dwThreadId, DBG_CONTINUE);
+	}
+
+	return 1;
 }
 
 /*
@@ -565,7 +597,6 @@ int Debugger::SaveRegisterChanges(DWORD thread_id, const CONTEXT &thread_context
 	return 1;
 }
 */
-
 /*
 int Debugger::PrintRegisterChanges(DWORD thread_id)
 {
