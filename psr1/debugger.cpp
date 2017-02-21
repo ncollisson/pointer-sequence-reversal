@@ -196,7 +196,13 @@ int Debugger::WaitForMemoryBreakpoint()
 					// do we need to do the first or second insn from buffer?
 					// if first, just get rid of 2x max size
 					cs_insn offending_instruction = insn[1];
-					tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
+
+					// do insn_buffer = offending_instruction.byte buffer
+					// then saveinstruction(insn_buffer)
+					uint8_t* insn_buffer = insn->bytes;
+					tracer->SaveInstruction(insn_buffer, offending_thread_ID, thread_context);
+
+					//tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
 					tracer->AnalyzeRunTrace(offending_thread_ID, exception_record);
 
 					/*
@@ -291,7 +297,7 @@ z
 					return 0;
 				}
 
-				tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
+				tracer->SaveInstruction(instruction_buffer, offending_thread_ID, thread_context);
 
 				SetTrapFlag(offending_thread_ID);
 				

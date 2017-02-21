@@ -204,14 +204,6 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	else
 	{
 		std::cout << "trace completed but did not succeed" << std::endl;
-
-		for (auto ins = relevant_instructions.rbegin(); ins != relevant_instructions.rend(); ins++)
-		{
-			auto rel_insn = *ins;
-			std::cout << rel_insn.address << "\t" << rel_insn.mnemonic << " " << rel_insn.op_str << std::endl;
-		}
-
-		std::cout << "-------- end of trace --------" << std::endl;
 	}
 
 		
