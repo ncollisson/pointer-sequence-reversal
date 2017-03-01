@@ -330,7 +330,15 @@ z
 		ContinueDebugEvent(lpdebug_event->dwProcessId, lpdebug_event->dwThreadId, DBG_CONTINUE);
 	}
 
+	CleanUpAndExit();
+}
+
+int Debugger::CleanUpAndExit()
+{
 	RemoveMemoryBreakpoint();
+
+	DEBUG_EVENT debug_event;
+	LPDEBUG_EVENT lpdebug_event = &debug_event;
 
 	while (TRUE)
 	{

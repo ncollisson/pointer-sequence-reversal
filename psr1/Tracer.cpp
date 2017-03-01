@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Tracer.h"
+#include "debugger.h"
 
 #define MAX_INSN_LENGTH 16
 
@@ -182,16 +183,24 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 
 		//trace_pos = FindEarliestOccurenceOfValueInTrace(thread_id, value); // returns instruction position in trace
 		trace_pos = FindMostRecentOccurenceOfValueInTrace(thread_id, value, trace_pos);
+		if (trace_pos == 0) break;
+
 		raw_insn = std::get<1>(run_trace.at(trace_pos));
 		address = std::get<0>(run_trace.at(trace_pos));
 
 		insn = GetCsInsnFromBytes(raw_insn, address);
 
-		if (insn.address == last_insn_address) break;
+		if (insn.address == last_insn_address) break; // this might more correct using trace_pos instead of address
 		last_insn_address = insn.address;
 
 		reg_name = GetRegisterReadFrom(thread_id, insn, trace_pos);
-		if (reg_name == "No registers read") break;
+		if (reg_name == "No registers read")
+		{
+			relevant_instructions.push_back(std::make_pair(insn, value));
+			break;
+		}
+
+		if (GetAsyncKeyState(0x51)) break;
 	}
 
 	if (analysis_succeeded)
@@ -209,13 +218,13 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	}
 	else
 	{
-		std::cout << "trace completed but did not succeed" << std::endl;
+		std::cout << "trace analysis completed" << std::endl;
 
 		for (auto ins = relevant_instructions.rbegin(); ins != relevant_instructions.rend(); ins++)
 		{
 			auto rel_insn = *ins;
 			std::cout << rel_insn.first.address << std::hex << "\t" << rel_insn.first.mnemonic << " ";
-			std::cout << rel_insn.first.op_str << "\t" << std::hex << rel_insn.second << std::endl;
+			std::cout << rel_insn.first.op_str << "\t\t" << std::hex << rel_insn.second << std::endl;
 		}
 
 		std::cout << "-------- end of trace --------" << std::endl;
@@ -458,10 +467,12 @@ size_t Tracer::FindMostRecentOccurenceOfValueInTrace(DWORD thread_id, DWORD valu
 					}
 				}
 
-				break;
+				break; // maybe break only if reg read is good
 			}
 		}
 
 		if (!reg_read_is_stack_reg) return rel_trace_pos;
 	}
+
+	return rel_trace_pos;
 }

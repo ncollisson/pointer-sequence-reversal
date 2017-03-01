@@ -22,6 +22,7 @@ public:
 	int WaitForMemoryBreakpoint();
 	int SetSoftBreakpoint(LPVOID target_address);
 	int StartRecordingRegisterModifications();
+	int CleanUpAndExit();
 	//int PrintRegisterChanges(DWORD thread_id);
 
 private:

@@ -47,7 +47,7 @@ private:
 	std::map<DWORD, run_trace_vec> all_threads_saved_instructions;
 	std::map<DWORD, CONTEXT> all_threads_saved_contexts;
 	//const size_t x86_MAX_INSTRUCTION_LENGTH = 15;
-	const size_t max_trace_length = 50000;
+	const size_t max_trace_length = 10000;
 	const size_t max_instruction_length = 15;
 
 };
