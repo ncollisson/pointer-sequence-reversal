@@ -1,12 +1,4 @@
 #include "stdafx.h"
-#include <Windows.h>
-#include <map>
-#include <vector>
-#include <array>
-#include <string>
-#include <iostream>
-#include <tuple>
-#include <algorithm>
 #include "Tracer.h"
 
 #define MAX_INSN_LENGTH 16
@@ -90,20 +82,22 @@ int Tracer::SaveInstruction(uint8_t* instruction_buffer, DWORD thread_id, const 
 		previous_eip = std::get<0>(all_threads_saved_instructions[thread_id].back());
 	}
 
-	//std::tuple<DWORD, std::array<uint8_t, MAX_INSN_LENGTH>, std::map<std::string, DWORD>> instruction;
-	std::map<std::string, DWORD> modifications;
-
-	//if (thread_context.Eip != all_threads_saved_contexts[thread_id].Eip) modifications["Eip"] = thread_context.Eip;
-	if (thread_context.Eax != all_threads_saved_contexts[thread_id].Eax) modifications["Eax"] = thread_context.Eax;
-	if (thread_context.Ebx != all_threads_saved_contexts[thread_id].Ebx) modifications["Ebx"] = thread_context.Ebx;
-	if (thread_context.Ecx != all_threads_saved_contexts[thread_id].Ecx) modifications["Ecx"] = thread_context.Ecx;
-	if (thread_context.Edx != all_threads_saved_contexts[thread_id].Edx) modifications["Edx"] = thread_context.Edx;
-	if (thread_context.Edi != all_threads_saved_contexts[thread_id].Edi) modifications["Edi"] = thread_context.Edi;
-	if (thread_context.Esi != all_threads_saved_contexts[thread_id].Esi) modifications["Esi"] = thread_context.Esi;
-
 	// check that prev eip and current eip dont match, or else mem bp triggering instructions will get added twice
 	if (previous_eip != current_eip)
 	{
+		//std::tuple<DWORD, std::array<uint8_t, MAX_INSN_LENGTH>, std::map<std::string, DWORD>> instruction;
+		std::map<std::string, DWORD> modifications;
+
+		//if (thread_context.Eip != all_threads_saved_contexts[thread_id].Eip) modifications["Eip"] = thread_context.Eip;
+		if (thread_context.Eax != all_threads_saved_contexts[thread_id].Eax) modifications["Eax"] = thread_context.Eax;
+		if (thread_context.Ebx != all_threads_saved_contexts[thread_id].Ebx) modifications["Ebx"] = thread_context.Ebx;
+		if (thread_context.Ecx != all_threads_saved_contexts[thread_id].Ecx) modifications["Ecx"] = thread_context.Ecx;
+		if (thread_context.Edx != all_threads_saved_contexts[thread_id].Edx) modifications["Edx"] = thread_context.Edx;
+		if (thread_context.Edi != all_threads_saved_contexts[thread_id].Edi) modifications["Edi"] = thread_context.Edi;
+		if (thread_context.Esi != all_threads_saved_contexts[thread_id].Esi) modifications["Esi"] = thread_context.Esi;
+
+		all_threads_saved_contexts[thread_id] = thread_context;
+
 		std::array<uint8_t, MAX_INSN_LENGTH> insn_buffer = { 0 };
 
 		for (unsigned int i = 0; i < MAX_INSN_LENGTH; i++)
@@ -124,37 +118,42 @@ int Tracer::SaveInstruction(uint8_t* instruction_buffer, DWORD thread_id, const 
 	return 1;
 }
 
-int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
+cs_insn Tracer::GetCsInsnFromBytes(std::array<uint8_t, MAX_INSN_LENGTH> insn_bytes, DWORD address)
 {
-	// first, print whole trace
-	// then, try to analyze trace based on read/written register in offending insn
-	// if analysis is successful/useful, print the analysis
-
-	// probably want to make this more like analyze saved instructions
-	// takes no args, just looks at current trace for thread, oh maybe i need to know which thread to do
-
-	std::string reg_name;
-	bool analysis_succeeded = false, found = false;
-	uint8_t raw_insn_buf[MAX_INSN_LENGTH] = { 0 };
-	cs_insn *insnp;
-	cs_insn insn;
+	uint8_t insn_buf[MAX_INSN_LENGTH] = { 0 };
 	size_t count = 0;
-
-	DWORD address = std::get<0>(all_threads_saved_instructions[thread_id].back());
-	std::array<uint8_t, MAX_INSN_LENGTH> raw_insn = std::get<1>(all_threads_saved_instructions[thread_id].back());
+	cs_insn insn;
+	cs_insn *insnp;
 
 	for (size_t i = 0; i < MAX_INSN_LENGTH; i++)
 	{
-		raw_insn_buf[i] = raw_insn[i];
+		insn_buf[i] = insn_bytes[i];
 	}
 
-	count = cs_disasm(cs_handle, raw_insn_buf, MAX_INSN_LENGTH, address, count, &insnp);
+	count = cs_disasm(cs_handle, insn_buf, MAX_INSN_LENGTH, address, count, &insnp);
+	insn = insnp[0];
 
-	insn = *insnp;
+	return insn;
+}
+
+int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
+{
+	std::string reg_name;
+	bool analysis_succeeded = false, found = false;
+	cs_insn insn;
+	DWORD address;
+	run_trace_vec run_trace = all_threads_saved_instructions[thread_id];
+
+	std::array<uint8_t, MAX_INSN_LENGTH> raw_insn = std::get<1>(run_trace.back());
+	address = std::get<0>(run_trace.back());
+
+	insn = GetCsInsnFromBytes(raw_insn, address);
+
+	size_t trace_pos = run_trace.end() - run_trace.begin() - 1;
 
 	if (exception_record.ExceptionInformation[0] == 0) // true when the memory access violation was a read
 	{
-		reg_name = GetRegisterReadFrom(thread_id, insn);
+		reg_name = GetRegisterReadFrom(thread_id, insn, trace_pos);
 	}
 	else
 	{
@@ -165,13 +164,15 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 
 	DWORD value;
 	uint64_t last_insn_address = 0;
-	std::vector<cs_insn> relevant_instructions;
+	std::vector<std::pair<cs_insn, DWORD>> relevant_instructions;
 
 	while (!analysis_succeeded)
 	{
-		value = GetValueOfRegisterForInstruction(thread_id, reg_name, insn, found);
+		value = GetValueOfRegisterForInstruction(thread_id, reg_name, insn, found, trace_pos);
 		if (!found) break;
 		found = false;
+
+		relevant_instructions.push_back(std::make_pair(insn, value));
 
 		if (IsStaticAddress(value)) // or whatever other condition means success
 		{
@@ -179,13 +180,17 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 			break;
 		}
 
-		insn = FindEarliestOccurenceOfValueInTrace(thread_id, value); // returns some instruction 
+		//trace_pos = FindEarliestOccurenceOfValueInTrace(thread_id, value); // returns instruction position in trace
+		trace_pos = FindMostRecentOccurenceOfValueInTrace(thread_id, value, trace_pos);
+		raw_insn = std::get<1>(run_trace.at(trace_pos));
+		address = std::get<0>(run_trace.at(trace_pos));
+
+		insn = GetCsInsnFromBytes(raw_insn, address);
+
 		if (insn.address == last_insn_address) break;
 		last_insn_address = insn.address;
 
-		relevant_instructions.push_back(insn);
-
-		reg_name = GetRegisterReadFrom(thread_id, insn);
+		reg_name = GetRegisterReadFrom(thread_id, insn, trace_pos);
 		if (reg_name == "No registers read") break;
 	}
 
@@ -196,7 +201,8 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 		for (auto ins = relevant_instructions.rbegin(); ins != relevant_instructions.rend(); ins++)
 		{
 			auto rel_insn = *ins;
-			std::cout << rel_insn.address << "\t" << rel_insn.mnemonic << " " << rel_insn.op_str << std::endl;
+			std::cout << rel_insn.first.address << std::hex << "\t" << rel_insn.first.mnemonic << " ";
+			std::cout << rel_insn.first.op_str << "\t\t" << std::hex << rel_insn.second << std::endl;
 		}
 
 		std::cout << "-------- end of trace --------" << std::endl;
@@ -208,7 +214,8 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 		for (auto ins = relevant_instructions.rbegin(); ins != relevant_instructions.rend(); ins++)
 		{
 			auto rel_insn = *ins;
-			std::cout << rel_insn.address << "\t" << rel_insn.mnemonic << " " << rel_insn.op_str << std::endl;
+			std::cout << rel_insn.first.address << std::hex << "\t" << rel_insn.first.mnemonic << " ";
+			std::cout << rel_insn.first.op_str << "\t" << std::hex << rel_insn.second << std::endl;
 		}
 
 		std::cout << "-------- end of trace --------" << std::endl;
@@ -290,7 +297,7 @@ bool Tracer::IsStaticAddress(DWORD value)
 	return false;
 }
 
-std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn)
+std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn, const size_t trace_pos)
 {
 	std::string reg_name = "No registers read", temp_reg_name, op_str = insn.op_str;
 	cs_regs regs_read, regs_write;
@@ -314,7 +321,7 @@ std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn)
 			temp_reg_name = cs_reg_name(cs_handle, regs_read[i]);
 			temp_reg_name[0] = toupper(temp_reg_name[0]);
 
-			this_value = GetValueOfRegisterForInstruction(thread_id, temp_reg_name.c_str(), insn, found);
+			this_value = GetValueOfRegisterForInstruction(thread_id, temp_reg_name.c_str(), insn, found, trace_pos);
 
 			if (this_value >= last_value)
 			{
@@ -329,15 +336,19 @@ std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn)
 	return reg_name;
 }
 
-DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, std::string reg_name, cs_insn insn, bool& found)
+DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, std::string reg_name, cs_insn insn, bool& found, const size_t start_trace_pos)
 {
 	uint64_t address_of_instruction = insn.address;
-	auto run_trace = all_threads_saved_instructions[thread_id];
+	//auto run_trace = all_threads_saved_instructions[thread_id];
 	std::map<std::string, DWORD> modifications;
+	run_trace_vec run_trace = all_threads_saved_instructions[thread_id];
 
-	for (auto ins = run_trace.rbegin(); ins != run_trace.rend(); ins++)
+	//std::reverse_iterator<std::vector<instruction_info>::iterator> trace_it = run_trace.rend() - start_trace_pos;
+
+	for (size_t trace_pos = start_trace_pos; trace_pos > 0; trace_pos--)
 	{
-		modifications = std::get<2>(*ins);
+		instruction_info insn_info = run_trace.at(trace_pos);
+		modifications = std::get<2>(insn_info);
 
 		auto modification = modifications.find(reg_name.c_str());
 
@@ -352,30 +363,32 @@ DWORD Tracer::GetValueOfRegisterForInstruction(DWORD thread_id, std::string reg_
 	return 0;
 }
 
-cs_insn Tracer::FindEarliestOccurenceOfValueInTrace(DWORD thread_id, DWORD value)
+size_t Tracer::FindEarliestOccurenceOfValueInTrace(DWORD thread_id, DWORD value)
 {
-	auto run_trace = all_threads_saved_instructions[thread_id];
-	cs_insn *insnp, *last_insnp;
+	run_trace_vec run_trace = all_threads_saved_instructions[thread_id];
+	cs_insn *insnp;
 	DWORD address;
 	std::array<uint8_t, MAX_INSN_LENGTH> raw_insn;
 	size_t count = 0;
 	std::map<std::string, DWORD> modifications;
 	uint8_t raw_insn_buf[MAX_INSN_LENGTH] = { 0 };
+	size_t trace_pos = 0;
 
-	for (auto ins = run_trace.begin(); ins != run_trace.end(); ins++)
+	for (size_t trace_pos = 0; trace_pos < run_trace.size(); trace_pos++)
 	{
-		// think im going to have to align modifications with instructions properly?
-		// or maybe just grab the previous instruction here or something
-
-		modifications = std::get<2>(*ins);
+		instruction_info insn_info = run_trace.at(trace_pos);
+		modifications = std::get<2>(insn_info);
 
 		for (auto mod = modifications.begin(); mod != modifications.end(); mod++)
 		{
-			if (mod->second == value)
+			if (mod->second == value && trace_pos != 0)
 			{
 				// just decrement ins iterator and grab prev instruction
-				address = std::get<0>(*(ins - 1));
-				raw_insn = std::get<1>(*(ins - 1));
+				size_t prev_trace_pos = trace_pos - 1;
+				instruction_info prev_insn_info = run_trace.at(prev_trace_pos);
+				/*
+				address = std::get<0>(prev_insn_info);
+				raw_insn = std::get<1>(prev_insn_info);
 
 				for (size_t i = 0; i < MAX_INSN_LENGTH; i++)
 				{
@@ -383,9 +396,72 @@ cs_insn Tracer::FindEarliestOccurenceOfValueInTrace(DWORD thread_id, DWORD value
 				}
 
 				count = cs_disasm(cs_handle, raw_insn_buf, MAX_INSN_LENGTH, address, count, &insnp);
-
-				return *insnp;
+				*/
+				return prev_trace_pos;
 			}
 		}
+	}
+
+	// should do something about error condition
+	return 0;
+}
+
+size_t Tracer::FindMostRecentOccurenceOfValueInTrace(DWORD thread_id, DWORD value, size_t start_trace_pos)
+{
+	run_trace_vec run_trace = all_threads_saved_instructions[thread_id];
+	std::map<std::string, DWORD> modifications;
+	DWORD address;
+	std::array<uint8_t, MAX_INSN_LENGTH> raw_insn;
+	uint8_t raw_insn_buf[MAX_INSN_LENGTH] = { 0 };
+	size_t count = 0;
+	cs_insn *insnp;
+	cs_insn insn;
+	cs_regs regs_read, regs_write;
+	uint8_t read_count, write_count;
+	std::string reg_read;
+	bool reg_read_is_stack_reg = true;
+	size_t rel_trace_pos = 0;
+
+	for (size_t trace_pos = start_trace_pos; trace_pos > 0; trace_pos--)
+	{
+		instruction_info insn_info = run_trace.at(trace_pos);
+		modifications = std::get<2>(insn_info);
+
+		for (auto mod = modifications.begin(); mod != modifications.end(); mod++)
+		{
+			if (mod->second == value && trace_pos != 0)
+			{
+				// just decrement ins iterator and grab prev instruction
+				size_t prev_trace_pos = trace_pos - 1;
+				instruction_info prev_insn_info = run_trace.at(prev_trace_pos);
+				
+				address = std::get<0>(prev_insn_info);
+				raw_insn = std::get<1>(prev_insn_info);
+
+				for (size_t i = 0; i < MAX_INSN_LENGTH; i++) raw_insn_buf[i] = raw_insn[i];
+
+				count = cs_disasm(cs_handle, raw_insn_buf, MAX_INSN_LENGTH, address, count, &insnp);
+				insn = insnp[0];
+
+				if (count > 0)
+				{
+					reg_read = GetRegisterReadFrom(thread_id, insn, prev_trace_pos);
+
+					if (reg_read == "Esp" || reg_read == "Ebp")
+					{
+						reg_read_is_stack_reg = true;
+					}
+					else
+					{
+						reg_read_is_stack_reg = false;
+						rel_trace_pos = prev_trace_pos;
+					}
+				}
+
+				break;
+			}
+		}
+
+		if (!reg_read_is_stack_reg) return rel_trace_pos;
 	}
 }
