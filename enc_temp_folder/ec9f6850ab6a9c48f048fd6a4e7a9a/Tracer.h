@@ -36,9 +36,8 @@ private:
 	std::string GetRegisterReadFrom(DWORD thread_id, cs_insn insn, const size_t trace_pos);
 	std::string GetRegisterWrittenTo(DWORD thread_id, cs_insn insn, const size_t trace_pos);
 	bool IsStaticAddress(DWORD value);
-	DWORD GetVTableIfThereIsOne(DWORD value);
 	cs_insn GetCsInsnFromBytes(std::array<uint8_t, MAX_INSN_LENGTH> insn_bytes, DWORD address);
-	int PrintRunTrace(std::vector<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions);
+	int PrintRunTrace(std::vector<std::pair<cs_insn, DWORD>> relevant_instructions);
 
 	typedef DWORD instruction_address;
 	typedef std::array<uint8_t, MAX_INSN_LENGTH> instruction_bytes;

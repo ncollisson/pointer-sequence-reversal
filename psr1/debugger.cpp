@@ -170,21 +170,6 @@ int Debugger::WaitForMemoryBreakpoint()
 					// save/print the analysis
 					// restart the trace for that thread
 
-					/*
-					get offending instruction
-						is next instruction atm, currently not captured in trace
-						pull max_instruction_length * 2, get second instruction
-					analyze it to see which register x was used for the access
-						should be the only register in the instruction?
-							not necessarily, but good enough for now?
-					determine which register y gave register x its value
-					find most recent instruction modifying register y
-					continue until register obtains value from stack or static memory
-						how to identify static memory or stack?
-						win api call to get memory regions
-					print each instruction that pertains to the access
-					*/
-
 					GetCurrentThreadContext(offending_thread_ID, thread_context);
 
 					// profile this and other rpms, how bad are they?
@@ -204,75 +189,6 @@ int Debugger::WaitForMemoryBreakpoint()
 
 					//tracer->SaveInstructionInfo(instruction_buffer, max_insn_size, offending_thread_ID, thread_context);
 					tracer->AnalyzeRunTrace(offending_thread_ID, exception_record);
-
-					/*
-					// maybe move cs_handle to class data member?
-					//if (cs_open(CS_ARCH_X86, CS_MODE_32, &cs_handle) != CS_ERR_OK) std::cout << "Error in cs_open()" << std::endl;
-					cs_option(cs_handle, CS_OPT_DETAIL, CS_OPT_ON);
-
-					cs_count = cs_disasm(cs_handle, instruction_buffer, sizeof(instruction_buffer), thread_context.Eip, 0, &insn);
-
-					cs_regs regs_read, regs_write;
-					uint8_t read_count, write_count;
-					std::string register_read_name;
-
-					if (cs_count > 0)
-					{
-						for (size_t i = 0; i < 1; i++)
-						{
-							std::cout << std::endl;
-							std::cout << "offending instruction:" << std::endl;
-							std::cout << "address: " << insn[i].address << "\tmnemonic: " << insn[i].mnemonic << "\t" << insn[i].op_str << std::endl;
-							if (insn[i].detail->regs_read_count > 0)
-							{
-								//std::cout << "\tused for access: " << cs_reg_name(cs_handle, insn[i].detail->regs_read[0]) << std::endl;
-							}
-							else
-							{
-								//std::cout << "no regs read" << std::endl;
-							}
-
-							if (cs_regs_access(cs_handle, &insn[i],
-						        regs_read, &read_count,
-								regs_write, &write_count) == 0) {
-
-								// may have to only use read access exceptions for now
-								// correctly identifies that ecx is read from in "mov esi, [ecx + 4]"
-								// need to check accuracy with other instructions
-								// if its not accurate enough, might have to default to just printing
-								// full run trace with reg modifications and instructions
-								if (read_count > 0 && exception_record.ExceptionInformation[0] == 0) {
-									std::cout << "\n\tRegisters read: ";
-									for (i = 0; i < read_count; i++) {
-										register_read_name = cs_reg_name(cs_handle, regs_read[i]);
-										std::cout << register_read_name << " " << std::endl;
-
-										AnalyzeRunTrace(offending_thread_ID, thread_context, regs_read[i], read_count);
-									}
-									std::cout << "\n";
-								}
-
-								// looks like capstone wont identify written registers well
-								// wont know that ecx is written in	"mov [ecx + 4], esi"
-								if (write_count > 0 && exception_record.ExceptionInformation[0] == 1) {
-									std::cout << "\n\tRegisters written: ";
-									for (i = 0; i < write_count; i++) {
-										std::cout << cs_reg_name(cs_handle, regs_write[i]) << " " << std::endl;
-									}
-									std::cout << "\n";
-								}
-							} 
-						}
-					}
-
-					cs_free(insn, cs_count);
-z
-					std::cout << "Eip is: " << std::hex << thread_context.Eip << std::endl;
-
-					PrintRunTrace(offending_thread_ID);
-					std::cout << "\n\n\n\n";
-					*/
-					
 				}
 
 				SetTrapFlag(offending_thread_ID);
@@ -349,81 +265,6 @@ int Debugger::CleanUpAndExit()
 	return 1;
 }
 
-/*
-int Debugger::AnalyzeRunTrace(DWORD thread_id, CONTEXT thread_context, uint16_t register_ID, uint8_t read_count)
-{
-	// get register read from
-	// get value in that register
-	// iterate through run trace vector to find first occurrence of that value
-	// start over, until there isnt a register read from? see if this works
-
-	int value;
-
-	switch (register_ID)
-	{
-	case 20: // eax
-	case 21: // ebx
-	case 22: // ecx
-	case 23: // edi
-	case 24: // edx
-	case 25: // esi
-
-	}
-
-	while (read_count > 0)
-	{
-		//value = thread_context.
-	}
-}
-*/
-
-/*
-int Debugger::SaveInstructionInfo(DWORD thread_id, const CONTEXT& thread_context)
-{
-	// instead of parsing now, lets just save raw code and parse after mem bp has been hit
-	// would have to just save max_instruction_length worth of bytes from eip each time
-	// then parse later and take insn[0] from each saved chunk
-	const unsigned int MAX_INSTRUCTION_LENGTH = 15;
-	uint8_t instruction_buffer[MAX_INSTRUCTION_LENGTH] = { 0 };
-	SIZE_T num_bytes_read = 0;
-	size_t cs_count = 0;
-	cs_insn *insn;
-
-	ReadProcessMemory(target_handle, LPCVOID(thread_context.Eip), instruction_buffer, sizeof(instruction_buffer), &num_bytes_read);
-
-	//if (cs_open(CS_ARCH_X86, CS_MODE_32, &cs_handle) != CS_ERR_OK) std::cout << "Error in cs_open()" << std::endl;
-	cs_option(cs_handle, CS_OPT_DETAIL, CS_OPT_ON);
-	cs_count = cs_disasm(cs_handle, instruction_buffer, sizeof(instruction_buffer), thread_context.Eip, 0, &insn);
-
-	std::tuple<DWORD, cs_insn, std::map<std::string, DWORD>> instruction;
-	std::map<std::string, DWORD> modifications;
-
-	if (thread_context.Eip != all_threads_saved_contexts[thread_id].Eip) modifications["Eip"] = thread_context.Eip;
-	if (thread_context.Eax != all_threads_saved_contexts[thread_id].Eax) modifications["Eax"] = thread_context.Eax;
-	if (thread_context.Ebx != all_threads_saved_contexts[thread_id].Ebx) modifications["Ebx"] = thread_context.Ebx;
-	if (thread_context.Ecx != all_threads_saved_contexts[thread_id].Ecx) modifications["Ecx"] = thread_context.Ecx;
-	if (thread_context.Edx != all_threads_saved_contexts[thread_id].Edx) modifications["Edx"] = thread_context.Edx;
-	if (thread_context.Edi != all_threads_saved_contexts[thread_id].Edi) modifications["Edi"] = thread_context.Edi;
-	if (thread_context.Esi != all_threads_saved_contexts[thread_id].Esi) modifications["Esi"] = thread_context.Esi;
-
-	if (cs_count > 0)
-	{
-		instruction = std::make_tuple(thread_context.Eip, insn[0], modifications);
-
-		if (all_threads_saved_instructions[thread_id].size() >= MAX_TRACE_LENGTH)
-		{
-			all_threads_saved_instructions[thread_id].erase(all_threads_saved_instructions[thread_id].begin());
-		}
-
-		all_threads_saved_instructions[thread_id].push_back(instruction);
-	}
-
-	cs_free(insn, cs_count);
-
-	return 1;
-}
-*/
-
 int Debugger::IsMemoryBreakpointHit(const DEBUG_EVENT& debug_event)
 {
 	LPVOID access_address;
@@ -446,7 +287,7 @@ int Debugger::IsMemoryBreakpointHit(const DEBUG_EVENT& debug_event)
 
 	if (access_address == target_address)
 	{
-		std::cout << "Memory breakpoint hit\n" << std::endl;
+		std::cout << "Memory breakpoint hit" << std::endl;
 		mem_breakpoint_hit = TRUE;
 	}
 
