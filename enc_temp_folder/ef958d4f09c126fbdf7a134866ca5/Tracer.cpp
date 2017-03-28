@@ -189,7 +189,7 @@ int Tracer::PrintRunTrace(std::vector<std::tuple<cs_insn, DWORD, DWORD>> relevan
 
 		if (vtable != 0)
 		{
-			std::cout << " " << std::internal << "0x" << std::setfill('0') << std::setw(8) << std::hex << vtable;
+			std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << std::hex << vtable;
 		}
 
 		std::cout << std::endl;
@@ -209,25 +209,23 @@ bool Tracer::IsStaticAddress(DWORD value)
 
 DWORD Tracer::GetVTableIfThereIsOne(DWORD value)
 {
-	unsigned int potential_vtable_ptr = 0, potential_vtable = 0;
+	int potential_vtable_ptr[1] = { 0 }, potential_vtable[1] = { 0 };
 	MEMORY_BASIC_INFORMATION mem_info1 = { 0 }, mem_info2 = { 0 };
 
 	// 4 is x86 specific
-	if (!ReadProcessMemory(target_handle, (LPCVOID)value, &potential_vtable_ptr, 4, NULL)) return 0;
+	if (!ReadProcessMemory(target_handle, (LPCVOID)value, potential_vtable_ptr, 4, NULL)) return 0;
 
-	if (!VirtualQueryEx(target_handle, (LPCVOID)potential_vtable_ptr, &mem_info1, sizeof(MEMORY_BASIC_INFORMATION))) return 0;
+	if (!VirtualQueryEx(target_handle, (LPCVOID)potential_vtable_ptr[0], &mem_info1, sizeof(MEMORY_BASIC_INFORMATION))) return 0;
 
 	if (mem_info1.Protect != PAGE_READONLY) return 0;
 
-	if (!ReadProcessMemory(target_handle, (LPCVOID)potential_vtable_ptr, &potential_vtable, 4, NULL)) return 0;
+	if (!ReadProcessMemory(target_handle, (LPCVOID)potential_vtable_ptr[0], potential_vtable, 4, NULL)) return 0;
 
-	if (!VirtualQueryEx(target_handle, (LPCVOID)potential_vtable, &mem_info2, sizeof(MEMORY_BASIC_INFORMATION))) return 0;
+	if (!VirtualQueryEx(target_handle, (LPCVOID)potential_vtable[0], &mem_info2, sizeof(MEMORY_BASIC_INFORMATION))) return 0;
 
-	unsigned int code_protection = PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_READONLY;
+	if (mem_info2.Protect != PAGE_EXECUTE) return 0;
 
-	if (!(mem_info2.Protect & code_protection)) return 0;
-
-	return potential_vtable_ptr;
+	return potential_vtable[0];
 }
 
 std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn, const size_t trace_pos)

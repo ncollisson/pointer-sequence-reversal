@@ -6,8 +6,8 @@
 #define MAX_INSN_LENGTH 16
 
 
-Tracer::Tracer()
-	: cs_handle(NULL) // how to do this right? should we initialize handle to null or an actual handle value here?
+Tracer::Tracer(HANDLE target_handle)
+	: cs_handle(NULL), target_handle(target_handle)
 {
 	InitializeCapstone();
 }
@@ -103,20 +103,23 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	insn = GetCsInsnFromBytes(raw_insn, address);
 
 	size_t trace_pos = run_trace.end() - run_trace.begin() - 1;
+	size_t last_trace_pos = 0;
 
 	if (exception_record.ExceptionInformation[0] == 0) // true when the memory access violation was a read
 	{
+		std::cout << "Memory access violation was a read, starting trace analysis" << std::endl;
 		reg_name = GetRegisterReadFrom(thread_id, insn, trace_pos);
 	}
 	else
 	{
 		// reg_name = GetRegisterWrittenTo(thread_id, insn, trace_pos);
+		std::cout << "Memory access violation was a write, skipping trace analysis" << std::endl << std::endl;
 		return 0;
 	}
 
-	DWORD value;
+	DWORD value, vtable;
 	uint64_t last_insn_address = 0;
-	std::vector<std::pair<cs_insn, DWORD>> relevant_instructions;
+	std::vector<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions;
 
 	while (true)
 	{
@@ -124,9 +127,9 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 		if (!found) break;
 		found = false;
 
-		relevant_instructions.push_back(std::make_pair(insn, value));
+		vtable = GetVTableIfThereIsOne(value);
 
-		// if (IsStaticAddress(value)) break; // or whatever other condition means success
+		relevant_instructions.push_back(std::make_tuple(insn, value, vtable));
 
 		//trace_pos = FindEarliestOccurenceOfValueInTrace(thread_id, value); // returns instruction position in trace
 		trace_pos = FindMostRecentOccurenceOfValueInTrace(thread_id, value, trace_pos);
@@ -137,54 +140,62 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 
 		insn = GetCsInsnFromBytes(raw_insn, address);
 
-		if (insn.address == last_insn_address) break; // this might more correct using trace_pos instead of address
-		last_insn_address = insn.address;
+		if (trace_pos == last_trace_pos) break;
+		last_trace_pos = trace_pos;
 
 		reg_name = GetRegisterReadFrom(thread_id, insn, trace_pos);
 		if (reg_name == "No registers read")
 		{
-			relevant_instructions.push_back(std::make_pair(insn, value));
+			relevant_instructions.push_back(std::make_tuple(insn, value, vtable));
 			break;
 		}
 
 		if (GetAsyncKeyState(0x51)) break;
 	}
 
-	// todo: probably make the printing its own function
-	// non-leading 0s of address get highlighted/bright color
-	// highlight instructions that cause register value changes?
-
 	PrintRunTrace(relevant_instructions);
 
 	return 1;
 }
 
-int Tracer::PrintRunTrace(std::vector<std::pair<cs_insn, DWORD>> relevant_instructions)
+int Tracer::PrintRunTrace(std::vector<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions)
 {
 	std::string full_insn_string;
 	std::string mnemonic;
 	std::string op_str;
+	uint64_t eip;
+	DWORD value, vtable;
 
 	std::cout << "-- Trace analysis completed --" << std::endl;
-	std::cout << std::internal << std::setw(10) << "EIP" << "|";
-	std::cout << std::setw(32) << "Instruction" << "|";
-	std::cout << std::setw(10) << "Value" << "|";
+	std::cout << std::left << std::setfill(' ') << std::setw(12) << "EIP";
+	std::cout << std::setw(32) << "Instruction";
+	std::cout << std::setw(11) << "Value";
 	std::cout << std::setw(10) << "VTable" << std::endl;
 
 	for (auto ins = relevant_instructions.rbegin(); ins != relevant_instructions.rend(); ins++)
 	{
 		auto rel_insn = *ins;
-		mnemonic = rel_insn.first.mnemonic;
-		op_str = rel_insn.first.op_str;
+		eip = std::get<0>(rel_insn).address;
+		mnemonic = std::get<0>(rel_insn).mnemonic;
+		op_str = std::get<0>(rel_insn).op_str;
+		value = std::get<1>(rel_insn);
+		vtable = std::get<2>(rel_insn);
 
 		full_insn_string = mnemonic + " " + op_str;
 
-		std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << rel_insn.first.address << std::setfill(' ');
+		std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << eip << std::setfill(' ');
 		std::cout << "  " << std::left << std::setw(32) << full_insn_string;
-		std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << std::hex << rel_insn.second << std::endl;
+		std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << std::hex << value;
+
+		if (vtable != 0)
+		{
+			std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << std::hex << vtable;
+		}
+
+		std::cout << std::endl;
 	}
 
-	std::cout << "-------- End of trace --------" << std::endl;
+	std::cout << "-------- End of trace --------" << std::endl << std::endl;
 
 	return 1;
 }
@@ -194,6 +205,29 @@ bool Tracer::IsStaticAddress(DWORD value)
 	if (value >= 0x400000 && value <= 0xA3D000) return true;
 
 	return false;
+}
+
+DWORD Tracer::GetVTableIfThereIsOne(DWORD value)
+{
+	unsigned int potential_vtable_ptr = 0, potential_vtable = 0;
+	MEMORY_BASIC_INFORMATION mem_info1 = { 0 }, mem_info2 = { 0 };
+
+	// 4 is x86 specific
+	if (!ReadProcessMemory(target_handle, (LPCVOID)value, &potential_vtable_ptr, 4, NULL)) return 0;
+
+	if (!VirtualQueryEx(target_handle, (LPCVOID)potential_vtable_ptr, &mem_info1, sizeof(MEMORY_BASIC_INFORMATION))) return 0;
+
+	if (mem_info1.Protect != PAGE_READONLY) return 0;
+
+	if (!ReadProcessMemory(target_handle, (LPCVOID)potential_vtable_ptr, &potential_vtable, 4, NULL)) return 0;
+
+	if (!VirtualQueryEx(target_handle, (LPCVOID)potential_vtable, &mem_info2, sizeof(MEMORY_BASIC_INFORMATION))) return 0;
+
+	unsigned int code_protection = PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_READONLY;
+
+	if (!(mem_info2.Protect & code_protection)) return 0;
+
+	return potential_vtable;
 }
 
 std::string Tracer::GetRegisterReadFrom(DWORD thread_id, cs_insn insn, const size_t trace_pos)

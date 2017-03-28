@@ -18,7 +18,7 @@
 class Tracer
 {
 public:
-	Tracer();
+	Tracer(HANDLE target_handle);
 	~Tracer();
 
 	int SaveInstruction(uint8_t* instruction_buffer, DWORD thread_id, const CONTEXT& thread_context);
@@ -52,6 +52,6 @@ private:
 	//const size_t x86_MAX_INSTRUCTION_LENGTH = 15;
 	const size_t max_trace_length = 25000;
 	const size_t max_instruction_length = 15;
-
+	HANDLE target_handle;
 };
 

@@ -51,8 +51,6 @@ int Debugger::Attach()
 		std::cout << "Could not DebugSetProcessKillOnExit(FALSE)" << std::endl;
 	}
 
-	tracer = std::make_unique<Tracer>();
-
 	std::cout << "Now debugging the target process" << std::endl;
 
 	return 1;
@@ -77,6 +75,8 @@ int Debugger::SetMemoryBreakpoint(LPVOID target_address = NULL)
 
 		std::cout << "Obtained handle to target process" << std::endl;
 	}
+
+	tracer = std::make_unique<Tracer>(target_handle);
 
 	if (target_address == NULL)
 	{
@@ -164,12 +164,6 @@ int Debugger::WaitForMemoryBreakpoint()
 			case STATUS_GUARD_PAGE_VIOLATION:
 				if (IsMemoryBreakpointHit(debug_event))
 				{
-					// analyze run trace recording for that thread
-					// how?
-					
-					// save/print the analysis
-					// restart the trace for that thread
-
 					GetCurrentThreadContext(offending_thread_ID, thread_context);
 
 					// profile this and other rpms, how bad are they?
