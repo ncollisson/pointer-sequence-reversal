@@ -2,6 +2,10 @@
 #include "Tracer.h"
 #include "debugger.h"
 #include <iomanip>
+#include <vector>
+#include <list>
+#include <algorithm>
+#include <tuple>
 
 #define MAX_INSN_LENGTH 16
 
@@ -113,13 +117,14 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 	else
 	{
 		// reg_name = GetRegisterWrittenTo(thread_id, insn, trace_pos);
+		// maybe give an option to the user to manually choose register written to
 		std::cout << "Memory access violation was a write, skipping trace analysis" << std::endl << std::endl;
 		return 0;
 	}
 
-	DWORD value, vtable;
+	DWORD value = 0, vtable = 0;
 	uint64_t last_insn_address = 0;
-	std::vector<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions;
+	std::list<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions;
 
 	while (true)
 	{
@@ -155,10 +160,42 @@ int Tracer::AnalyzeRunTrace(DWORD thread_id, EXCEPTION_RECORD exception_record)
 
 	PrintRunTrace(relevant_instructions);
 
+	// do this if not verbose
+	ReduceRunTrace(relevant_instructions);
+
+	PrintRunTrace(relevant_instructions);
+
 	return 1;
 }
 
-int Tracer::PrintRunTrace(std::vector<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions)
+int Tracer::ReduceRunTrace(std::list<std::tuple<cs_insn, DWORD, DWORD>> &relevant_instructions)
+{
+	DWORD value;
+
+	if (relevant_instructions.size() <= 1) return 0;
+
+	for (auto ins = relevant_instructions.begin(); ins != relevant_instructions.end(); ins++)
+	{
+		auto rel_insn = *ins;
+		value = std::get<1>(rel_insn);
+
+		auto last_occurence = ins;
+
+		for (auto jns = ins; jns != relevant_instructions.end(); jns++)
+		{
+			auto rel_jnsn = *jns;
+			DWORD current_value = std::get<1>(rel_jnsn);
+
+			if (current_value == value) last_occurence = jns;
+		}
+
+		if (std::next(last_occurence, 1) == relevant_instructions.end()) continue;
+
+		relevant_instructions.erase(std::next(ins, 1), std::next(last_occurence, 1));
+	}
+}
+
+int Tracer::PrintRunTrace(std::list<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions)
 {
 	std::string full_insn_string;
 	std::string mnemonic;
@@ -185,7 +222,11 @@ int Tracer::PrintRunTrace(std::vector<std::tuple<cs_insn, DWORD, DWORD>> relevan
 
 		std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << eip << std::setfill(' ');
 		std::cout << "  " << std::left << std::setw(32) << full_insn_string;
-		std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << std::hex << value;
+
+		if (value != 0)
+		{
+			std::cout << std::internal << "0x" << std::setfill('0') << std::setw(8) << std::hex << value;
+		}
 
 		if (vtable != 0)
 		{

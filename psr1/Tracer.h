@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <map>
 #include <vector>
+#include <list>
 #include <deque>
 #include <array>
 #include <string>
@@ -38,7 +39,8 @@ private:
 	bool IsStaticAddress(DWORD value);
 	DWORD GetVTableIfThereIsOne(DWORD value);
 	cs_insn GetCsInsnFromBytes(std::array<uint8_t, MAX_INSN_LENGTH> insn_bytes, DWORD address);
-	int PrintRunTrace(std::vector<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions);
+	int PrintRunTrace(std::list<std::tuple<cs_insn, DWORD, DWORD>> relevant_instructions);
+	int ReduceRunTrace(std::list<std::tuple<cs_insn, DWORD, DWORD>> &relevant_instructions);
 
 	typedef DWORD instruction_address;
 	typedef std::array<uint8_t, MAX_INSN_LENGTH> instruction_bytes;

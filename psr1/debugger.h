@@ -65,6 +65,6 @@ private:
 	//int AnalyzeRunTrace(DWORD offending_thread_ID, CONTEXT thread_context, uint16_t register_ID, uint8_t read_count);
 	//int PrintAnalysis(DWORD offending_thread_ID, unsigned int analysis_ID);
 
-	std::unique_ptr<Tracer> tracer;
+	std::unique_ptr<Tracer> tracer = NULL;
 };
 

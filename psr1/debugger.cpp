@@ -76,7 +76,10 @@ int Debugger::SetMemoryBreakpoint(LPVOID target_address = NULL)
 		std::cout << "Obtained handle to target process" << std::endl;
 	}
 
-	tracer = std::make_unique<Tracer>(target_handle);
+	if (tracer == NULL)
+	{
+		tracer = std::make_unique<Tracer>(target_handle);
+	}
 
 	if (target_address == NULL)
 	{
